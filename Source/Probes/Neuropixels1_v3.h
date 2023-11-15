@@ -28,6 +28,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "../API/v3/NeuropixAPI.h"
 
+#include "../DataInterface/RippleDetectorInterface.h"
+
 #define MAXPACKETS 64
 
 /** 
@@ -110,6 +112,9 @@ private:
 	uint64 event_codes[12 * MAXPACKETS];
 	int64 lfp_timestamps[MAXPACKETS];
 	uint64 lfp_event_codes[MAXPACKETS];
+
+	// use this to get all the parameters we need and send data over to the RippleDetector
+	RippleDetectorInterface RDI; 
 
 };
 

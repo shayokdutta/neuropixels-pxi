@@ -112,7 +112,7 @@ Neuropixels1_v3::Neuropixels1_v3(Basestation* bs, Headstage* hs, Flex* fl) : Pro
 
 bool Neuropixels1_v3::open()
 {
-	LOGC("Opening probe...");
+	LOGC("Opening probe...v3 API Moooooooooo!!!");
 	errorCode = Neuropixels::openProbe(basestation->slot, headstage->port, dock);
 
 	LOGC("openProbe: slot: ", basestation->slot, " port: ", headstage->port, " dock: ", dock, " errorCode: ", errorCode);
@@ -244,8 +244,10 @@ void Neuropixels1_v3::selectElectrodes()
 					settings.selectedShank[ch],
 					settings.availableBanks.indexOf(settings.selectedBank[ch]));
 			}
-			
 		}
+		// this gets me the total number of channels?
+		// this is what it seems like from the Probe struct...
+		RDI.setNumChannels(settings.selectedChannel.size());
 	}
 
 }
@@ -449,6 +451,15 @@ void Neuropixels1_v3::run()
 			apBuffer->addToBuffer(apSamples, ap_timestamps, timestamp_s, event_codes, 12 * count);
 			lfpBuffer->addToBuffer(lfpSamples, lfp_timestamps, timestamp_s, lfp_event_codes, count); 
 			
+			// Add data to the ripple detector module as well right here
+			// This should be in a separate buffer 
+			/* Adding it here logically enables it to be somewhat agnostic to the OE interface...
+			*  Also, I'm curious on how much the Neuropixels thread and API for processing are related
+			*  to the OE software. Was this built in collaboration? They were just beta testers but
+			* the apBuffer and lfpBuffer are both DataBuffer Objects which are an open ephys gui plugin api type...
+			*/
+
+
 			if (ap_offsets[0][0] == 0)
 			{
 				updateOffsets(apSamples, ap_timestamp, true);
