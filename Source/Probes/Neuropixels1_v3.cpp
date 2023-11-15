@@ -411,6 +411,16 @@ void Neuropixels1_v3::run()
 
 					last_npx_timestamp = npx_timestamp;
 
+					// Add data to the ripple detector module as well right here
+					// This should be in a separate buffer 
+					/* Adding it here logically enables it to be somewhat agnostic to the OE interface...
+					*  Also, I'm curious on how much the Neuropixels thread and API for processing are related
+					*  to the OE software. Was this built in collaboration? They were just beta testers but
+					* the apBuffer and lfpBuffer are both DataBuffer Objects which are an open ephys gui plugin api type...
+					*/
+
+					//RDI.writeToSharedMemory(lfpSamples, lfp_timestamps, timestamp_s, lfp_event_codes, count);
+
 					for (int j = 0; j < 384; j++)
 					{
 
@@ -450,15 +460,6 @@ void Neuropixels1_v3::run()
 
 			apBuffer->addToBuffer(apSamples, ap_timestamps, timestamp_s, event_codes, 12 * count);
 			lfpBuffer->addToBuffer(lfpSamples, lfp_timestamps, timestamp_s, lfp_event_codes, count); 
-			
-			// Add data to the ripple detector module as well right here
-			// This should be in a separate buffer 
-			/* Adding it here logically enables it to be somewhat agnostic to the OE interface...
-			*  Also, I'm curious on how much the Neuropixels thread and API for processing are related
-			*  to the OE software. Was this built in collaboration? They were just beta testers but
-			* the apBuffer and lfpBuffer are both DataBuffer Objects which are an open ephys gui plugin api type...
-			*/
-
 
 			if (ap_offsets[0][0] == 0)
 			{

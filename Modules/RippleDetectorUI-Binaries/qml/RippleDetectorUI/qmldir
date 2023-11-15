@@ -1,0 +1,12 @@
+module RippleDetectorUI
+linktarget RippleDetectorUIplugin
+optional plugin RippleDetectorUIplugin
+classname RippleDetectorUIPlugin
+typeinfo RippleDetectorUI.qmltypes
+prefer :/qt/qml/RippleDetectorUI/
+DirectoryFontLoader 1.0 DirectoryFontLoader.qml
+EventListModel 1.0 EventListModel.qml
+ShpinBox 1.0 ShpinBox.qml
+singleton Constants 1.0 Constants.qml
+EventListSimulator 1.0 EventListSimulator.qml
+
