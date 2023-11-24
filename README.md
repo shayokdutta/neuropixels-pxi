@@ -1,7 +1,9 @@
 # Shay's modification to integrate a standalone RippleDetectorUI
-Ripple detector upgraded from old Trodes dev. This is now a standalone module that should interface both with Trodes and Neuropixels PXIe --> Open Ephys data. Some upgrades for the data transfer from the Neuropixels API to AudioBuffer that OE GUI works with have been upgraded to operate in parallel for loops. Depending on time, I may vectorize this with AVX instructions similar to the Trodes handling of Neuropixels data but this objectively will cause a speedup and minimize closed-loop latency. 
+Ripple detector upgraded from old Trodes dev. This is now a standalone module that should interface both with Trodes and Neuropixels PXIe --> Open Ephys data. 
 
-RippleDetectorUI binaries are included in the module. This overall should be compiling right now but has not been tested with regards to running yet. Docs and usage will be provided later but this is expected to only work on Windows with Neuropixels. Intan interface on Linux with Trodes should work as well once this is finalized fully. 
+UPGRADES! NPX --> my module as well as loading the NPX data from the probe to the buffer that's sent to OE is now vectorized. This is done with AVX instructions similar to the Trodes handling of Neuropixels data. Objectively this will cause a speedup and minimize closed-loop latency. How much though? I'm unsure I'll quantify it soon enough.
+
+RippleDetectorUI binaries are included in the module. Docs and usage will be provided later but this is expected to only work on Windows with Neuropixels. Intan interface on Linux with Trodes should work as well once this is finalized fully. I do want to maintain Spikegadgets/Trodes support for the Neuropixels headstage as well eventually but alas I don't hav ethe hardware.
 
 # Neuropixels PXI Plugin
 
