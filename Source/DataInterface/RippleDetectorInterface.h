@@ -22,6 +22,10 @@ public:
 	/// </summary>
 	void sendMessageToStimHandler(std::string msg); 
 
+	float* getLFPSamplesReference() { return lfpSamples; };
+
+	void setLFPTimeStamps(int packetNum, int64_t lfp_timestamp);
+
 	/// <summary>
 	/// What we should use to share the neural data ...
 	/// or whatever else from the NPX probes/IMEC things
@@ -48,9 +52,12 @@ public:
 private:
 	int numChannels; 
 
-	int64_t ap_timestamps[12 * MAXPACKETS];
-	uint64_t event_codes[12 * MAXPACKETS];
+	//int64_t ap_timestamps[12 * MAXPACKETS];
+	//uint64_t event_codes[12 * MAXPACKETS];
 	int64_t lfp_timestamps[MAXPACKETS];
-	uint64_t lfp_event_codes[MAXPACKETS];
+	//uint64_t lfp_event_codes[MAXPACKETS];
+
+	//alignas(64) float apSamples[385 * 12 * MAXPACKETS];
+	alignas(64) float lfpSamples[385 * MAXPACKETS];
 };
 

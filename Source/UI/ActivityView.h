@@ -25,6 +25,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define __ACTIVITYVIEW_H__
 
 #include <VisualizerEditorHeaders.h>
+#include <immintrin.h>
+#include <omp.h>
 
 enum ActivityToView {
 	APVIEW = 0,
@@ -48,7 +50,7 @@ public:
 
 		updateInterval = updateInterval_;
 
-		reset();
+		initialReset();
 	}
 
 	const float* getPeakToPeakValues() {
@@ -66,7 +68,7 @@ public:
 			counter++;
 		}
 
-		if (counter % 10 == 0)
+		if (counter % 100 == 0)
 		{
 			if (sample < minChannelValues[channel])
 			{
@@ -79,12 +81,9 @@ public:
 				maxChannelValues.set(channel, sample);
 			}
 		}
-		
 	}
 
-	void reset()
-	{
-
+	void initialReset() {
 		for (int i = 0; i < peakToPeakValues.size(); i++)
 		{
 
@@ -93,7 +92,35 @@ public:
 			minChannelValues.set(i, 999999.9f);
 			maxChannelValues.set(i, -999999.9f);
 		}
+		counter = 0;
+	}
 
+	void reset()
+	{
+		float* minValsPtr = minChannelValues.getRawDataPointer();
+		float* maxValsPtr = maxChannelValues.getRawDataPointer();
+		float* peakToPeakPtr = peakToPeakValues.getRawDataPointer();
+
+		for (int i = 0; i < peakToPeakValues.size(); i += 16) {
+			__m512 maxVals = _mm512_loadu_ps(maxValsPtr + i);
+			__m512 minVals = _mm512_loadu_ps(minValsPtr + i);
+
+			__m512 peakToPeakVals = _mm512_sub_ps(maxVals, minVals);
+
+			_mm512_storeu_ps(peakToPeakPtr + i, peakToPeakVals);
+
+			_mm512_storeu_ps(minValsPtr + i, _mm512_set1_ps(999999.9f));
+			_mm512_storeu_ps(maxValsPtr + i, _mm512_set1_ps(-999999.9f));
+		}
+
+		/*for (int i = 0; i < peakToPeakValues.size(); i++)
+		{
+
+			peakToPeakValues.set(i, maxChannelValues[i] - minChannelValues[i]);
+
+			minChannelValues.set(i, 999999.9f);
+			maxChannelValues.set(i, -999999.9f);
+		}*/
 		counter = 0;
 		
 	}

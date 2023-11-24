@@ -27,6 +27,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <DataThreadHeaders.h>
 #include <stdio.h>
 #include <string.h>
+#include <vector>
 
 #include "API/v1/NeuropixAPI.h"
 #include "API/v3/NeuropixAPI.h"
@@ -409,6 +410,10 @@ public:
 
 	float ap_offsets[384][100];
 	float lfp_offsets[384][100];
+
+	std::vector<float> flatApOffsets;
+	std::vector<float> flatLfpOffsets;
+
 
 	double timestamp_s[12 * MAXPACKETS];
 

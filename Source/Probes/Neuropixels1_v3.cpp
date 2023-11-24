@@ -24,8 +24,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "Neuropixels1_v3.h"
 #include "Geometry.h"
 #include "../NeuropixThread.h"
+#include <omp.h>
+#include <immintrin.h>
+#include <stdexcept> // Include this for using std::runtime_error
+
 
 #define MAXLEN 50
+
+#define DEBUGGING_PRINTS true
 
 void Neuropixels1_v3::getInfo()
 {
@@ -342,8 +348,8 @@ void Neuropixels1_v3::startAcquisition()
 	apBuffer->clear();
 	lfpBuffer->clear();
 
-	apView->reset();
-	lfpView->reset();
+	apView->initialReset();
+	lfpView->initialReset();
 
 	last_npx_timestamp = 0;
 	passedOneSecond = false;
@@ -363,7 +369,6 @@ void Neuropixels1_v3::stopAcquisition()
 
 void Neuropixels1_v3::run()
 {
-
 	while (!threadShouldExit())
 	{
 
@@ -380,11 +385,15 @@ void Neuropixels1_v3::run()
 		if (errorCode == Neuropixels::SUCCESS &&
 			count > 0)
 		{
-			
+			// Precompute factors outside the loop for vectorization
+			const float apGainFactor = scaleFactor / settings.availableApGains[settings.apGainIndex];
+			const float lfpGainFactor = scaleFactor / settings.availableLfpGains[settings.lfpGainIndex];
 			for (int packetNum = 0; packetNum < count; packetNum++)
 			{
 				for (int i = 0; i < 12; i++)
 				{
+					const int indexOffset = i * SKIP + packetNum * 12 * SKIP;
+
 					eventCode = packet[packetNum].Status[i] >> 6; // AUX_IO<0:13>
 
 					if (invertSyncLine)
@@ -411,52 +420,95 @@ void Neuropixels1_v3::run()
 
 					last_npx_timestamp = npx_timestamp;
 
-					// Add data to the ripple detector module as well right here
-					// This should be in a separate buffer 
-					/* Adding it here logically enables it to be somewhat agnostic to the OE interface...
-					*  Also, I'm curious on how much the Neuropixels thread and API for processing are related
-					*  to the OE software. Was this built in collaboration? They were just beta testers but
-					* the apBuffer and lfpBuffer are both DataBuffer Objects which are an open ephys gui plugin api type...
-					*/
+					// Separate loop for LFP samples if i == 0
+					// Compute Sample Values (Vectorized Loop)
 
-					//RDI.writeToSharedMemory(lfpSamples, lfp_timestamps, timestamp_s, lfp_event_codes, count);
+					float* lfpSampleRef = RDI.getLFPSamplesReference(); // Get reference once
+					// Vectorized Loop for LFP samples using AVX-512 Intrinsics
+					if (i == 0) {
+						
+						if(originalCode){
+							for (int j = 0; j < 384; ++j) {
+								lfpSamples[j + packetNum * SKIP] =
+									float(packet[packetNum].lfpData[j]) * lfpGainFactor - lfp_offsets[j][0]; // convert to microvolts
+								//lfpView->addSample(lfpSamples[j + packetNum * SKIP], j);
+							}
+						}
+						else {
+							for (int j = 0; j < 384; j += 16) {
+								// Load 16 int16_t values into a 256-bit register (since each int16_t is 2 bytes, 16 of them fit into 256 bits)
+								__m256i rawData = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&packet[packetNum].lfpData[j]));
 
-					for (int j = 0; j < 384; j++)
-					{
+								// Convert int16_t to int32_t (extending the values)
+								__m512i extendedData = _mm512_cvtepi16_epi32(rawData);
 
-						apSamples[j + i * SKIP + packetNum * 12 * SKIP] = 
-							float(packet[packetNum].apData[i][j]) * 1.2f / 1024.0f * 1000000.0f
-							      / settings.availableApGains[settings.apGainIndex]
-								  - ap_offsets[j][0]; // convert to microvolts
+								// Convert int32_t to float
+								__m512 lfpDataVec = _mm512_cvtepi32_ps(extendedData);
 
-						apView->addSample(apSamples[j + i * SKIP + packetNum * 12 * SKIP], j);
+								__m512 lfpOffsetsVec = _mm512_load_ps(&flatLfpOffsets[j]);
+								__m512 lfpResultsVec = _mm512_sub_ps(_mm512_mul_ps(lfpDataVec, _mm512_set1_ps(lfpGainFactor)), lfpOffsetsVec);
 
-						if (i == 0)
+								_mm512_store_ps(&lfpSamples[j + packetNum * SKIP], lfpResultsVec);
+
+								// Store results in lfpSamples of RippleDetectorInterface instance
+								_mm512_store_ps(&lfpSampleRef[j + packetNum * SKIP], lfpResultsVec);
+							}
+
+							/*for (int j = 0; j < 384; ++j) {
+								lfpView->addSample(lfpSamples[j + packetNum * SKIP], j);
+							}*/
+						}
+
+						lfp_timestamps[packetNum] = lfp_timestamp;
+						lfp_event_codes[packetNum] = eventCode;
+						RDI.setLFPTimeStamps(packetNum, lfp_timestamp);
+						++lfp_timestamp;
+						if (sendSync)
+							lfpSamples[384 + packetNum * SKIP] = (float)eventCode;
+					}
+					if (originalCode) {
+						for (int j = 0; j < 384; j++)
 						{
-							lfpSamples[j + packetNum * SKIP] = 
-								float(packet[packetNum].lfpData[j]) * 1.2f / 1024.0f * 1000000.0f 
-								/ settings.availableLfpGains[settings.lfpGainIndex]
-								- lfp_offsets[j][0]; // convert to microvolts
-
-							lfpView->addSample(lfpSamples[j + packetNum * SKIP], j);
+							apSamples[j + indexOffset] =
+								float(packet[packetNum].apData[i][j]) * apGainFactor - ap_offsets[j][0]; // convert to microvolts
 						}
 					}
+					else {
+						// Vectorized Loop for AP samples using AVX-512 Intrinsics
+						for (int j = 0; j < 384; j += 16) {
+
+							// Calculate the pointer to the current row and column
+							const int16_t* currentDataPtr = &packet[packetNum].apData[i][j];
+
+							// Load 16 int16_t values into a 256-bit register
+							__m256i rawData = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(currentDataPtr));
+
+							// Convert int16_t to int32_t
+							__m512i extendedData = _mm512_cvtepi16_epi32(rawData);
+
+							// Convert int32_t to float
+							__m512 apDataVec = _mm512_cvtepi32_ps(extendedData);
+							__m512 apOffsetsVec = _mm512_load_ps(&flatApOffsets[j]);
+							__m512 apResultsVec = _mm512_sub_ps(_mm512_mul_ps(apDataVec, _mm512_set1_ps(apGainFactor)), apOffsetsVec);
+							_mm512_store_ps(&apSamples[j + indexOffset], apResultsVec);
+						}
+					}
+
+					// Process the Samples (Separate Loop)
+					// This can be delayed as it's just for display...(APPPARENTLY NOT!)
+					/*for (int j = 0; j < 384; j++) {
+						apView->addSample(apSamples[j + indexOffset], j);
+					}*/
 
 					ap_timestamps[i + packetNum * 12] = ap_timestamp++;
 					event_codes[i + packetNum * 12] = eventCode;
 
 					if (sendSync)
-						apSamples[384 + i * SKIP + packetNum * 12 * SKIP] = (float)eventCode;
+						apSamples[384 + indexOffset] = (float)eventCode;
 
 				}
-
-				lfp_timestamps[packetNum] = lfp_timestamp++;
-				lfp_event_codes[packetNum] = eventCode;
-
-				if (sendSync)
-					lfpSamples[384 + packetNum * SKIP] = (float)eventCode;
-
 			}
+			
 
 			apBuffer->addToBuffer(apSamples, ap_timestamps, timestamp_s, event_codes, 12 * count);
 			lfpBuffer->addToBuffer(lfpSamples, lfp_timestamps, timestamp_s, lfp_event_codes, count); 

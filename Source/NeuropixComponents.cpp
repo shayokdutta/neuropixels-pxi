@@ -34,7 +34,9 @@ Probe::Probe(Basestation* bs_, Headstage* hs_, Flex* fl_, int dock_)
 	  dock(dock_),
 	  isValid(true),
 	  isCalibrated(false),
-      calibrationWarningShown(false)
+      calibrationWarningShown(false),
+	  flatApOffsets(384,0.0f),
+	  flatLfpOffsets(384,0.0f)
 {
 
 	for (int i = 0; i < 12 * MAXPACKETS; i++)
@@ -55,7 +57,6 @@ Probe::Probe(Basestation* bs_, Headstage* hs_, Flex* fl_, int dock_)
 
 void Probe::updateOffsets(float* samples, int64 timestamp, bool isApBand)
 {
-
 	if (isApBand && timestamp > 30000 * 5) // wait for amplifiers to settle
 	{
 		
@@ -64,6 +65,7 @@ void Probe::updateOffsets(float* samples, int64 timestamp, bool isApBand)
 			for (int i = 0; i < 384; i++)
 			{
 				ap_offsets[i][ap_offset_counter+1] = samples[i];
+				flatApOffsets[i] = ap_offsets[i][0];
 			}
 
 			ap_offset_counter++;
@@ -79,7 +81,7 @@ void Probe::updateOffsets(float* samples, int64 timestamp, bool isApBand)
 				}
 				
 				ap_offsets[i][0] /= 99;
-
+				flatApOffsets[i] = ap_offsets[i][0];
 			}
 
 			ap_offset_counter++;
@@ -88,13 +90,13 @@ void Probe::updateOffsets(float* samples, int64 timestamp, bool isApBand)
 	}
 	else if (!isApBand && timestamp > 2500 * 5) // wait for amplifiers to settle
 	{
-
 		if (lfp_offset_counter < 99)
 		{
 			for (int i = 0; i < 384; i++)
 			{
 				lfp_offsets[i][lfp_offset_counter+1] = samples[i];
-			}
+				flatLfpOffsets[i] = lfp_offsets[i][0];
+			}				
 
 			lfp_offset_counter++;
 		}
@@ -109,8 +111,8 @@ void Probe::updateOffsets(float* samples, int64 timestamp, bool isApBand)
 				}
 
 				lfp_offsets[i][0] /= 99;
-
-			}
+				flatLfpOffsets[i] = lfp_offsets[i][0];
+			}				
 
 			lfp_offset_counter++;
 		}

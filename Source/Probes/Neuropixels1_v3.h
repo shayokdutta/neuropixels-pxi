@@ -113,8 +113,11 @@ private:
 	int64 lfp_timestamps[MAXPACKETS];
 	uint64 lfp_event_codes[MAXPACKETS];
 
+	const float scaleFactor = 1.2f / 1024.0f * 1000000.0f; // Common scale factor
+
 	// use this to get all the parameters we need and send data over to the RippleDetector
 	RippleDetectorInterface RDI; 
+	bool originalCode = false; // if false we do this with Shay's vectorized code relying on AVX512
 
 };
 

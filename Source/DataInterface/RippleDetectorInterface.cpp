@@ -2,8 +2,17 @@
 #include <windows.h>
 
 // I'm just assumiing the 384 channel that this tends to assume anyways here...
-RippleDetectorInterface::RippleDetectorInterface():numChannels(384) {
+RippleDetectorInterface::RippleDetectorInterface():numChannels(384)
+{
+
 }
+
+/**
+* 
+**/
+void RippleDetectorInterface::setLFPTimeStamps(int packetNum, int64_t lfp_timestamp){
+    lfp_timestamps[packetNum] = lfp_timestamp; 
+};
 
 void RippleDetectorInterface::setNumChannels(int channelCount)
 {
