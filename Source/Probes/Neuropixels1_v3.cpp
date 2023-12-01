@@ -24,7 +24,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "Neuropixels1_v3.h"
 #include "Geometry.h"
 #include "../NeuropixThread.h"
-#include <omp.h>
 #include <immintrin.h>
 #include <stdexcept> // Include this for using std::runtime_error
 
@@ -118,7 +117,6 @@ Neuropixels1_v3::Neuropixels1_v3(Basestation* bs, Headstage* hs, Flex* fl) : Pro
 
 bool Neuropixels1_v3::open()
 {
-	LOGC("Opening probe...v3 API Moooooooooo!!!");
 	errorCode = Neuropixels::openProbe(basestation->slot, headstage->port, dock);
 
 	LOGC("openProbe: slot: ", basestation->slot, " port: ", headstage->port, " dock: ", dock, " errorCode: ", errorCode);
@@ -424,6 +422,7 @@ void Neuropixels1_v3::run()
 					// Compute Sample Values (Vectorized Loop)
 
 					float* lfpSampleRef = RDI.getLFPSamplesReference(); // Get reference once
+
 					// Vectorized Loop for LFP samples using AVX-512 Intrinsics
 					if (i == 0) {
 						
@@ -454,7 +453,9 @@ void Neuropixels1_v3::run()
 								_mm512_store_ps(&lfpSampleRef[j + packetNum * SKIP], lfpResultsVec);
 							}
 
-							/*for (int j = 0; j < 384; ++j) {
+							/* technically this is for the LFP view within the probe display
+							* which I'm not using so let's not even have this...
+							for (int j = 0; j < 384; ++j) {
 								lfpView->addSample(lfpSamples[j + packetNum * SKIP], j);
 							}*/
 						}
@@ -495,7 +496,8 @@ void Neuropixels1_v3::run()
 					}
 
 					// Process the Samples (Separate Loop)
-					// This can be delayed as it's just for display...(APPPARENTLY NOT!)
+					// Okay so this is only used for the probeviewer that comes with the 
+					// NPX plugin so it's not actually necessary. 
 					/*for (int j = 0; j < 384; j++) {
 						apView->addSample(apSamples[j + indexOffset], j);
 					}*/
