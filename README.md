@@ -3,7 +3,7 @@ Ripple detector upgraded from old Trodes dev. This is now a standalone module th
 
 UPGRADES! NPX --> my module as well as loading the NPX data from the probe to the buffer that's sent to OE is now vectorized. This is done with AVX instructions similar to the Trodes handling of Neuropixels data. Objectively this will cause a speedup and minimize closed-loop latency. How much though? I'm unsure I'll quantify it soon enough.
 
-RippleDetectorUI binaries are included in the module. Docs and usage will be provided later but this is expected to only work on Windows with Neuropixels. Intan interface on Linux with Trodes should work as well once this is finalized fully. I do want to maintain Spikegadgets/Trodes support for the Neuropixels headstage as well eventually but alas I don't hav ethe hardware.
+RippleDetectorUI binaries are included in the module. Docs and usage will be provided later but this is expected to only work on Windows with Neuropixels. Intan interface on Linux with Trodes should work as well once this is finalized fully. I do want to maintain Spikegadgets/Trodes support for the Neuropixels headstage as well eventually but alas I don't have the hardware anymore.
 
 # Neuropixels PXI Plugin
 
