@@ -5,6 +5,7 @@
 #include <iphlpapi.h>
 #include <windows.h>
 #include <string>
+#include <sstream>
 #include <stdint.h>
 #include <filesystem>
 
@@ -54,6 +55,11 @@ public:
 		int numItems,
 		int chunkSize = 1);
 
+	/// <summary>
+	/// 
+	/// </summary>
+	void readChannelsFromSharedMemory();
+
 	std::string createMessagingSocket();
 
 	/// <summary>
@@ -62,8 +68,13 @@ public:
 	/// </summary>
 	void sendMessageViaSocket(std::string msg);
 
+	void listenToClient();
+
 private:
 	int numChannels; 
+	int whichChannels[384]; // initialized to zeros. if it's 1 then we write data for that channel over to the module. 
+	
+	bool writeData;
 
 	int64_t ap_timestamps[12 * MAXPACKETS];
 	//uint64_t event_codes[12 * MAXPACKETS];
@@ -75,9 +86,13 @@ private:
 
 	PROCESS_INFORMATION procInfo; // RippleDetectorUIApp process
 	HANDLE hMapFile; // Handle for the shared memory
+	LPVOID lfpSharedMemory;
 	std::string sharedMemoryName;
 
+	struct addrinfo* result = NULL, hints;	
 	SOCKET ListenSocket; // Socket for messaging
+	SOCKET ClientSocket; // Need to know client info
+
 	std::string serverIPAddress; // IP Address for the socket server
 	int serverPortNum; // Port number for the socket server
 };

@@ -5,19 +5,23 @@
 RippleDetectorInterface::RippleDetectorInterface():numChannels(384)
 {
     serverIPAddress = "127.0.0.1";
+    ListenSocket = INVALID_SOCKET;
+    ClientSocket = INVALID_SOCKET;
+    writeData = false;
     return;
 }
 
 /**
 * close all handles as we destroy this object!
 **/
-RippleDetectorInterface::~RippleDetectorInterface() {
+RippleDetectorInterface::~RippleDetectorInterface() 
+{
     // Close the process and thread handles if they are valid
     if (procInfo.hProcess) {
         /*Figure out graceful exit...try to not use commented out line below*/
         // TerminateProcess(procInfo.hProcess, 0); // forceful termination. 
+        LOGC("Mooooooooooooooooo: Attempting to send exit message to RippleDetectorUIApp!");
         this->sendMessageViaSocket("exit"); // exit rippledetectoruiapp gracefully
-        LOGC("Mooooooooooooooooo: Sent message to close RippleDetectorUIApp!");
         CloseHandle(procInfo.hProcess);
     }
     if (procInfo.hThread) {
@@ -34,6 +38,11 @@ RippleDetectorInterface::~RippleDetectorInterface() {
         closesocket(ListenSocket);
     }
 
+    if (shutdown(ClientSocket, SD_SEND) == SOCKET_ERROR) {
+        LOGC("Error: Shutdown of socket failed. Error code: " + std::to_string(WSAGetLastError()));
+        closesocket(ClientSocket);
+    }
+
     // Clean up Winsock
     WSACleanup();
 }
@@ -42,9 +51,10 @@ RippleDetectorInterface::~RippleDetectorInterface() {
 /**
 * 
 **/
-void RippleDetectorInterface::setLFPTimeStamps(int packetNum, int64_t lfp_timestamp){
+void RippleDetectorInterface::setLFPTimeStamps(int packetNum, int64_t lfp_timestamp)
+{
     lfp_timestamps[packetNum] = lfp_timestamp; 
-};
+}
 
 void RippleDetectorInterface::setNumChannels(int channelCount)
 {
@@ -59,7 +69,8 @@ void RippleDetectorInterface::setNumChannels(int channelCount)
 /**
 * This should start the RippleDetectorUI process hopefully.
 **/
-void RippleDetectorInterface::launchRippleDetectorUI(std::string channelCount) {
+void RippleDetectorInterface::launchRippleDetectorUI(std::string channelCount) 
+{
     
     std::filesystem::path relativePath = "../../../OEPlugins/neuropixels-pxi/Modules/RippleDetectorUI-Binaries/RippleDetectorUIApp.exe";
 
@@ -106,6 +117,21 @@ void RippleDetectorInterface::launchRippleDetectorUI(std::string channelCount) {
             &si,            // Pointer to STARTUPINFO structure
             &procInfo             // Pointer to PROCESS_INFORMATION structure (removed extra parentheses)
         );
+        
+        // Accept a RippleDetectorUIApp client
+        ClientSocket = accept(ListenSocket, NULL, NULL);
+        if (ClientSocket == INVALID_SOCKET) {
+            LOGC("Mooooooooooooooooo: accept failed with error: %d\n", WSAGetLastError());
+            closesocket(ListenSocket);
+            WSACleanup();
+        }
+
+        // Launch a thread to listen to the client
+        std::thread listenThread(&RippleDetectorInterface::listenToClient, this);
+        listenThread.detach(); // Or handle the thread according to your application's threading model
+
+        // No longer need server socket
+        closesocket(ListenSocket);
     }
     else {
         LOGC("RippleDetectorUIApp.exe file not found");
@@ -116,15 +142,17 @@ void RippleDetectorInterface::launchRippleDetectorUI(std::string channelCount) {
 /**
 * Create socket for sending and receiving messages to RippleDetectorUIApp
 **/
-std::string RippleDetectorInterface::createMessagingSocket() {
+std::string RippleDetectorInterface::createMessagingSocket() 
+{
+
+    // Initialize Winsock
     WSADATA wsaData;
     int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (iResult != 0) {
-        // Handle error
+        LOGC("Mooooooooooooooooo: WSAStartup failed with error: %d\n", iResult);
         return "";
     }
 
-    struct addrinfo* result = NULL, hints;
     ZeroMemory(&hints, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
@@ -135,13 +163,16 @@ std::string RippleDetectorInterface::createMessagingSocket() {
     iResult = getaddrinfo(serverIPAddress.c_str(), "0", &hints, &result);
     if (iResult != 0) {
         WSACleanup();
+        LOGC("Mooooooooooooooooo: failed to get address and port number setup for socket");
         return "\nMooooooooooooooooo: failed to get address and port number setup for socket";
     }
 
-    SOCKET ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+    // Create a SOCKET for the server to listen for client connections.
+    ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
     if (ListenSocket == INVALID_SOCKET) {
         freeaddrinfo(result);
         WSACleanup();
+        LOGC("Mooooooooooooooooo: FAILED Create a SOCKET for the server to listen for client connections.");
         return "\nMooooooooooooooooo: Listen socket invalid";
     }
 
@@ -150,13 +181,17 @@ std::string RippleDetectorInterface::createMessagingSocket() {
         closesocket(ListenSocket);
         freeaddrinfo(result);
         WSACleanup();
+        LOGC("Mooooooooooooooooo: failed to bind socket to address in order to listen");
         return "\nMooooooooooooooooo: failed to bind socket to address in order to listen";
     }
+
+    freeaddrinfo(result);
 
     // Listen on the socket
     if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR) {
         closesocket(ListenSocket);
         WSACleanup();
+        LOGC("Mooooooooooooooooo: listen failed with error: %d\n", WSAGetLastError());
         return "\nMooooooooooooooooo: failed to listen on message socket";
     }
 
@@ -171,8 +206,6 @@ std::string RippleDetectorInterface::createMessagingSocket() {
 
     int localPort = ntohs(sin.sin_port);
 
-    freeaddrinfo(result);
-
 
     LOGC("Mooooooooooooooooo: socket server for messaging started at: " + serverIPAddress + ":" + std::to_string(localPort));
 
@@ -182,10 +215,11 @@ std::string RippleDetectorInterface::createMessagingSocket() {
 /**
 *  Method to create and return the name of the shared memory
 **/
-std::string RippleDetectorInterface::createSharedFIFODataBuffer() {
+std::string RippleDetectorInterface::createSharedFIFODataBuffer() 
+{
     LOGC("Mooooooooooooooooo: Creating Shared memory for LFP data transfer...");
     // Create a memory-mapped file
-    HANDLE hMapFile = CreateFileMappingW(
+    hMapFile = CreateFileMappingW(
         INVALID_HANDLE_VALUE, // Use paging file
         NULL,                 // Default security
         PAGE_READWRITE,       // Read/write access
@@ -194,84 +228,122 @@ std::string RippleDetectorInterface::createSharedFIFODataBuffer() {
         L"SharedMemoryLFPData");   // Name of mapping object
 
     if (hMapFile == NULL || hMapFile == INVALID_HANDLE_VALUE) {
-        // Handle error
+        LOGC("Mooooooooooooooooo: Error: Unable to create file mapping.");
+        return "";
+    }
+
+    // Map the shared memory
+    lfpSharedMemory = MapViewOfFile(
+        hMapFile,            // Handle to map object
+        FILE_MAP_ALL_ACCESS, // Read/write permission
+        0,                   // Max. object size (high DWORD)
+        0,                   // Max. object size (low DWORD)
+        385 * MAXPACKETS);   // Map entire file
+
+    if (lfpSharedMemory == NULL) {
+        LOGC("Mooooooooooooooooo: Error: Unable to map view of file.");
+        CloseHandle(hMapFile);
+        return "";
     }
 
     LOGC("Mooooooooooooooooo: Shared memory for LFP Data transfer created");
 
     // Return the name of the memory-mapped file
     return "SharedMemoryLFPData";
-
 }
+
+/**
+* Alrighty so this reads in and sets the channels then flushes the buffer
+**/
+void RippleDetectorInterface::readChannelsFromSharedMemory() 
+{
+    std::istringstream stream(static_cast<char*>(lfpSharedMemory));
+    std::string line;
+    while (std::getline(stream, line)) {
+        int channel = std::stoi(line);
+        if (channel >= 0 && channel < 384) {
+            whichChannels[channel] = 1;
+        }
+    }
+    memset(lfpSharedMemory, 0, 385*MAXPACKETS); // sets the entire memory to zero nibbles
+}
+
+
+/**
+*
+**/
+void RippleDetectorInterface::writeToSharedMemory(float* data, int64_t sampleNumbers, double* timestamps, uint64_t eventCodes, int numItems, int chunkSize)
+{
+}
+
 
 /**
 * Writes messages to the RippleDetectorUIApp
 **/
 void RippleDetectorInterface::sendMessageViaSocket(std::string msg) {
-    // Assuming serverPort is the port number obtained from createMessagingSocket
-    struct addrinfo* result = NULL, * ptr = NULL, hints;
-    ZeroMemory(&hints, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-
-    // Resolve the server address and port
-    int iResult = getaddrinfo(serverIPAddress.c_str(), std::to_string(serverPortNum).c_str(), &hints, &result);
-    if (iResult != 0) {
-        WSACleanup();
-        return;
-    }
-
-    // Create a SOCKET for connecting to server
-    SOCKET ConnectSocket = INVALID_SOCKET;
-    ptr = result;
-
-    // Create a socket
-    ConnectSocket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
-    if (ConnectSocket == INVALID_SOCKET) {
-        freeaddrinfo(result);
-        WSACleanup();
-        return;
-    }
-
-    // Connect to server
-    iResult = connect(ConnectSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
+    
+    int iResult = send(ClientSocket, msg.c_str(), (int)strlen(msg.c_str()), 0);
     if (iResult == SOCKET_ERROR) {
-        closesocket(ConnectSocket);
-        ConnectSocket = INVALID_SOCKET;
-    }
-
-    freeaddrinfo(result);
-
-    if (ConnectSocket == INVALID_SOCKET) {
+        LOGC("Mooooooooooooooooo: Error: Sending message failed. Error code: " + std::to_string(WSAGetLastError()));
+        closesocket(ClientSocket);
         WSACleanup();
         return;
     }
-
-    // Send message
-    iResult = send(ConnectSocket, msg.c_str(), (int)strlen(msg.c_str()), 0);
-    if (iResult == SOCKET_ERROR) {
-        closesocket(ConnectSocket);
-        WSACleanup();
-        return;
+    else {
+        LOGC("Message sent successfully");
     }
+}
 
-    // Shutdown the connection since no more data will be sent
-    iResult = shutdown(ConnectSocket, SD_SEND);
-    if (iResult == SOCKET_ERROR) {
-        closesocket(ConnectSocket);
-        WSACleanup();
-        return;
-    }
-
-    // Cleanup
-    closesocket(ConnectSocket);
-    WSACleanup();
+/**
+ * @brief toLowerCase: Function to convert string to lower case.
+ * @param str
+ * @return
+ */
+std::string toLowerCase(const std::string& str) 
+{
+    std::string lowerStr = str;
+    std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(), ::tolower);
+    return lowerStr;
 }
 
 /**
 * 
 **/
-void RippleDetectorInterface::writeToSharedMemory(float* data, int64_t sampleNumbers, double* timestamps, uint64_t eventCodes, int numItems, int chunkSize)
+void RippleDetectorInterface::listenToClient() 
 {
+    char buffer[512];
+
+    while (true) {
+        int bytesReceived = recv(ClientSocket, buffer, sizeof(buffer), 0);
+
+        if (bytesReceived > 0) {
+            std::string receivedMsg = toLowerCase(std::string(buffer, bytesReceived));
+            LOGC("Mooooooooooooooooo: Msg received: " + receivedMsg);
+
+            if (receivedMsg == "exit") {
+                break;
+            }
+            else if (receivedMsg == "channelsset" || receivedMsg == "setChannels") {
+                readChannelsFromSharedMemory();
+            }
+            else if (receivedMsg == "feedmedata" || receivedMsg == "nomonomnom") {
+                writeData = true;
+            }
+            else if (receivedMsg == "stopfeedingmedatapls") {
+                writeData = false;
+            }
+        }
+        else if (bytesReceived == 0) {
+            LOGC("Mooooooooooooooooo: Connection closing.");
+            break;
+        }
+        else {
+            LOGC("Mooooooooooooooooo: recv failed with error: " + std::to_string(WSAGetLastError()));
+            break;
+        }
+    }
+
+    // Clean up
+    closesocket(ClientSocket);
+    WSACleanup();
 }
