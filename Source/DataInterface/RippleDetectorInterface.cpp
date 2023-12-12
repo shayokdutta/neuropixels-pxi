@@ -224,7 +224,7 @@ std::string RippleDetectorInterface::createSharedFIFODataBuffer()
         NULL,                 // Default security
         PAGE_READWRITE,       // Read/write access
         0,                    // Maximum object size (high-order DWORD)
-        385 * MAXPACKETS,          // Maximum object size (low-order DWORD)
+        400 * MAXPACKETS * 3,          // Maximum object size (low-order DWORD)
         L"SharedMemoryLFPData");   // Name of mapping object
 
     if (hMapFile == NULL || hMapFile == INVALID_HANDLE_VALUE) {
@@ -238,7 +238,8 @@ std::string RippleDetectorInterface::createSharedFIFODataBuffer()
         FILE_MAP_ALL_ACCESS, // Read/write permission
         0,                   // Max. object size (high DWORD)
         0,                   // Max. object size (low DWORD)
-        385 * MAXPACKETS);   // Map entire file
+        400 * MAXPACKETS * 3);   // Map entire file
+    currentWritePosition = static_cast<char*>(lfpSharedMemory);
 
     if (lfpSharedMemory == NULL) {
         LOGC("Mooooooooooooooooo: Error: Unable to map view of file.");
@@ -255,26 +256,76 @@ std::string RippleDetectorInterface::createSharedFIFODataBuffer()
 /**
 * Alrighty so this reads in and sets the channels then flushes the buffer
 **/
-void RippleDetectorInterface::readChannelsFromSharedMemory() 
+void RippleDetectorInterface::readChannelsFromSharedMemory()
 {
+    // if we need to read in new channels after a reset!
+    if (!activeChannels.empty()) {
+        activeChannels.clear();
+    }
+
     std::istringstream stream(static_cast<char*>(lfpSharedMemory));
     std::string line;
     while (std::getline(stream, line)) {
-        int channel = std::stoi(line);
-        if (channel >= 0 && channel < 384) {
-            whichChannels[channel] = 1;
+        try {
+            int channel = std::stoi(line);
+            if (channel >= 0 && channel < 384) {
+                activeChannels.push_back(channel);
+                LOGC("Mooooooooooooooooo: Will send data from channel" + line);
+            }
+        }
+        catch (const std::invalid_argument& e) {
+            LOGC("Mooooooooooooooooo: Invalid argument encountered in shared memory data: " + line);
+        }
+        catch (const std::out_of_range& e) {
+            LOGC("Mooooooooooooooooo: Out of range error encountered in shared memory data: " + line);
         }
     }
-    memset(lfpSharedMemory, 0, 385*MAXPACKETS); // sets the entire memory to zero nibbles
+    memset(lfpSharedMemory, 0, 400*MAXPACKETS*3); // sets the entire memory to zero nibbles
 }
 
 
 /**
-*
+* Writes LFP data and timestamps to shared memory
 **/
-void RippleDetectorInterface::writeToSharedMemory(float* data, int64_t sampleNumbers, double* timestamps, uint64_t eventCodes, int numItems, int chunkSize)
-{
+void RippleDetectorInterface::writeToSharedMemory(int SKIP) {
+    if (writeData) {
+        std::ostringstream stream;
+
+        for (int packetNum = 0; packetNum < MAXPACKETS; ++packetNum) {
+            int64_t timestamp = lfp_timestamps[packetNum];
+            for (int channel : activeChannels) {
+                int offset = channel + packetNum * SKIP;
+                stream << channel << "," << timestamp << "," << lfpSamples[offset] << ";";
+            }
+        }
+
+        std::string formattedData = stream.str();
+        size_t dataSize = formattedData.size();
+
+        if (dataSize < (400 * MAXPACKETS * 3)) {
+            // Ensure the data does not exceed the buffer
+            // Check if the data will fit in the remaining buffer space
+            size_t remainingBufferSize = (400 * MAXPACKETS * 3) - (currentWritePosition - static_cast<char*>(lfpSharedMemory));
+            if (dataSize <= remainingBufferSize) {
+                // Write data to the current position
+                std::memcpy(currentWritePosition, formattedData.c_str(), dataSize);
+                // Update the current position
+                currentWritePosition += dataSize;
+            }
+            else {
+                // Wrap around and start from the beginning
+                currentWritePosition = static_cast<char*>(lfpSharedMemory);
+                std::memcpy(currentWritePosition, formattedData.c_str(), dataSize);
+                currentWritePosition += dataSize;
+            }
+        }
+        else {
+            LOGC("Error: Formatted data size exceeds shared memory buffer size.");
+        }
+    }
 }
+
+
 
 
 /**
@@ -323,7 +374,7 @@ void RippleDetectorInterface::listenToClient()
             if (receivedMsg == "exit") {
                 break;
             }
-            else if (receivedMsg == "channelsset" || receivedMsg == "setChannels") {
+            else if (receivedMsg == "channelsset" || receivedMsg == "setchannels") {
                 readChannelsFromSharedMemory();
             }
             else if (receivedMsg == "feedmedata" || receivedMsg == "nomonomnom") {
@@ -331,6 +382,10 @@ void RippleDetectorInterface::listenToClient()
             }
             else if (receivedMsg == "stopfeedingmedatapls") {
                 writeData = false;
+            }
+            else if (receivedMsg == "clearsharedmemory" || receivedMsg == "nonibbles") {
+                // sets the entire memory to zero nibbles (clears it)
+                memset(lfpSharedMemory, 0, 385 * MAXPACKETS); 
             }
         }
         else if (bytesReceived == 0) {

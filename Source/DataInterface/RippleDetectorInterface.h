@@ -28,6 +28,9 @@ public:
 
 	float* getLFPSamplesReference() { return lfpSamples; };
 
+	LPVOID getSharedMemory() { return lfpSharedMemory; };
+
+	bool shouldDataBeWritten() { return writeData; };
 
 	void setLFPTimeStamps(int packetNum, int64_t lfp_timestamp);
 
@@ -48,12 +51,7 @@ public:
 	/// What we should use to share the neural data ...
 	/// or whatever else from the NPX probes/IMEC things
 	/// </summary>
-	void writeToSharedMemory(float* data,
-		int64_t sampleNumbers,
-		double* timestamps,
-		uint64_t eventCodes,
-		int numItems,
-		int chunkSize = 1);
+	void writeToSharedMemory(int SKIP);
 
 	/// <summary>
 	/// 
@@ -72,8 +70,8 @@ public:
 
 private:
 	int numChannels; 
-	int whichChannels[384]; // initialized to zeros. if it's 1 then we write data for that channel over to the module. 
-	
+	std::vector<int> activeChannels; // Vector to store active channel indices
+
 	bool writeData;
 
 	int64_t ap_timestamps[12 * MAXPACKETS];
@@ -85,9 +83,11 @@ private:
 	alignas(64) float lfpSamples[385 * MAXPACKETS];
 
 	PROCESS_INFORMATION procInfo; // RippleDetectorUIApp process
+
 	HANDLE hMapFile; // Handle for the shared memory
 	LPVOID lfpSharedMemory;
 	std::string sharedMemoryName;
+	char* currentWritePosition; // Track current position in the buffer
 
 	struct addrinfo* result = NULL, hints;	
 	SOCKET ListenSocket; // Socket for messaging

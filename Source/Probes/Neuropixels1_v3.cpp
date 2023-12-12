@@ -367,6 +367,9 @@ void Neuropixels1_v3::stopAcquisition()
 
 void Neuropixels1_v3::run()
 {
+	// Get references once
+	float* lfpSampleRef = RDI.getLFPSamplesReference(); 
+	
 	while (!threadShouldExit())
 	{
 
@@ -386,7 +389,7 @@ void Neuropixels1_v3::run()
 			// Precompute factors outside the loop for vectorization
 			const float apGainFactor = scaleFactor / settings.availableApGains[settings.apGainIndex];
 			const float lfpGainFactor = scaleFactor / settings.availableLfpGains[settings.lfpGainIndex];
-			for (int packetNum = 0; packetNum < count; packetNum++)
+			for (int packetNum = 0; packetNum < MAXPACKETS; packetNum++)
 			{
 				for (int i = 0; i < 12; i++)
 				{
@@ -420,9 +423,6 @@ void Neuropixels1_v3::run()
 
 					// Separate loop for LFP samples if i == 0
 					// Compute Sample Values (Vectorized Loop)
-
-					float* lfpSampleRef = RDI.getLFPSamplesReference(); // Get reference once
-
 					// Vectorized Loop for LFP samples using AVX-512 Intrinsics
 					if (i == 0) {
 						
@@ -511,6 +511,7 @@ void Neuropixels1_v3::run()
 				}
 			}
 			
+			RDI.writeToSharedMemory(SKIP);
 
 			apBuffer->addToBuffer(apSamples, ap_timestamps, timestamp_s, event_codes, 12 * count);
 			lfpBuffer->addToBuffer(lfpSamples, lfp_timestamps, timestamp_s, lfp_event_codes, count); 
